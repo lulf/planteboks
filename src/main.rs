@@ -19,17 +19,14 @@ use panic_probe as _;
 use rtt_logger::RTTLogger;
 use rtt_target::rtt_init_print;
 
-use core::cell::UnsafeCell;
-use core::pin::Pin;
 use drogue_device::{
-    actors::button::Button,
-    drivers::wifi::esp8266::*,
+    actors::{button::Button, ticker::Ticker},
     nrf::{
         buffered_uarte::BufferedUarte,
         gpio::{FlexPin, Input, Level, NoPin, Output, OutputDrive, Pull},
-        gpiote::{self, PortInput},
+        gpiote::PortInput,
         interrupt,
-        peripherals::{P0_02, P0_03, P0_09, P0_10, P0_14, TIMER0, UARTE0},
+        peripherals::P0_14,
         saadc::*,
         uarte, Peripherals,
     },
@@ -37,7 +34,6 @@ use drogue_device::{
     traits::ip::*,
     *,
 };
-use embedded_hal::digital::v2::{InputPin, OutputPin};
 
 const WIFI_SSID: &str = include_str!(concat!(env!("OUT_DIR"), "/config/wifi.ssid.txt"));
 const WIFI_PSK: &str = include_str!(concat!(env!("OUT_DIR"), "/config/wifi.password.txt"));
@@ -49,6 +45,7 @@ static LOGGER: RTTLogger = RTTLogger::new(LevelFilter::Info);
 pub struct MyDevice {
     network: Network,
     monitor: ActorContext<'static, PlantMonitor<'static>>,
+    ticker: ActorContext<'static, Ticker<'static, PlantMonitor<'static>>>,
     button:
         ActorContext<'static, Button<'static, PortInput<'static, P0_14>, PlantMonitor<'static>>>,
 }
@@ -61,9 +58,6 @@ async fn main(context: DeviceContext<MyDevice>, p: Peripherals) {
     }
 
     log::set_max_level(log::LevelFilter::Info);
-
-    //    let p = Peripherals::take().unwrap();
-    //    let g = gpiote::initialize(p.GPIOTE, interrupt::take!(GPIOTE));
 
     let button_port = PortInput::new(Input::new(p.P0_14, Pull::Up));
 
@@ -95,12 +89,15 @@ async fn main(context: DeviceContext<MyDevice>, p: Peripherals) {
     let enable_pin = Output::new(p.P0_09, Level::Low, OutputDrive::Standard);
     let reset_pin = Output::new(p.P0_10, Level::Low, OutputDrive::Standard);
 
-    let mut temp_pin = FlexPin::new(p.P0_02);
-
-    let mut soil_pin = p.P0_04;
-    let mut adc = OneShot::new(p.SAADC, interrupt::take!(SAADC), Default::default());
+    let temp_pin = FlexPin::new(p.P0_02);
+    let soil_pin = p.P0_04;
+    let adc = OneShot::new(p.SAADC, interrupt::take!(SAADC), Default::default());
 
     context.configure(MyDevice {
+        ticker: ActorContext::new(Ticker::new(
+            Duration::from_secs(300),
+            Command::TakeMeasurement,
+        )),
         button: ActorContext::new(Button::new(button_port)),
         network: Network::new(WIFI_SSID.trim_end(), WIFI_PSK.trim_end(), HOST, PORT),
         monitor: ActorContext::new(PlantMonitor::new(temp_pin, soil_pin, adc)),
@@ -109,25 +106,7 @@ async fn main(context: DeviceContext<MyDevice>, p: Peripherals) {
     context.mount(|device, spawner| {
         let network = device.network.mount((u, enable_pin, reset_pin), spawner);
         let monitor = device.monitor.mount(network, spawner);
+        device.ticker.mount(monitor, spawner);
         device.button.mount(monitor, spawner);
     });
-
-    /*
-    loop {
-        Timer::after(Duration::from_secs(1)).await;
-        let sample = Pin::new(&mut adc).sample(&mut soil_pin).await;
-        log::info!("Got soil sample: {}", sample);
-        match Dht11Reading::read(&mut temp_pin) {
-            Ok(Dht11Reading {
-                temperature,
-                relative_humidity,
-            }) => log::info!(
-                "Got temperature: {}. Humidity: {}",
-                temperature,
-                relative_humidity
-            ),
-            Err(e) => log::info!("Error getting temperature reading: {:?}", e),
-        }
-    }
-    */
 }

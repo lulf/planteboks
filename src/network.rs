@@ -4,23 +4,16 @@ use core::future::Future;
 
 use core::pin::Pin;
 use drogue_device::{
-    actors::button::Button,
     drivers::wifi::esp8266::*,
     nrf::{
         buffered_uarte::BufferedUarte,
-        gpio::{FlexPin, Input, Level, NoPin, Output, OutputDrive, Pull},
-        gpiote::{self, PortInput},
-        interrupt,
-        peripherals::{P0_02, P0_03, P0_09, P0_10, P0_14, TIMER0, UARTE0},
-        saadc::*,
-        uarte, Peripherals,
+        gpio::Output,
+        peripherals::{P0_09, P0_10, TIMER0, UARTE0},
     },
-    time::*,
     traits::{ip::*, tcp::*, wifi::*},
     *,
 };
 
-use embedded_hal::digital::v2::{InputPin, OutputPin};
 use serde::Serialize;
 use serde_cbor::ser::SliceWrite;
 use serde_cbor::Serializer;
@@ -98,7 +91,7 @@ impl<'a> Actor for NetworkApi<'a> {
     fn on_start<'m>(self: Pin<&'m mut Self>) -> Self::OnStartFuture<'m> {
         async move {
             let this = unsafe { self.get_unchecked_mut() };
-            let mut driver = this.driver.as_mut().unwrap();
+            let driver = this.driver.as_mut().unwrap();
             log::info!("Joining access point");
             driver
                 .join(Join::Wpa {
@@ -132,7 +125,7 @@ impl<'a> Actor for NetworkApi<'a> {
     }
 
     fn on_message<'m>(
-        mut self: Pin<&'m mut Self>,
+        self: Pin<&'m mut Self>,
         message: Self::Message<'m>,
     ) -> Self::OnMessageFuture<'m> {
         async move {

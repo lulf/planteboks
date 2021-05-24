@@ -1,5 +1,4 @@
 use drogue_device::nrf::gpio::{FlexPin, OutputDrive, Pin, Pull};
-use drogue_device::time::*;
 use embedded_hal::digital::v2::{InputPin, OutputPin};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -67,7 +66,7 @@ where
     pin.set_as_input(Pull::Up);
     delay_us(40);
 
-    read_bit(pin);
+    read_bit(pin)?;
 
     log::info!("Start reading, reading input");
 
@@ -89,7 +88,6 @@ where
 pub enum DhtError {
     ChecksumMismatch,
     Timeout,
-    PinError,
 }
 
 /// Wait until the given function returns true or the timeout is reached.

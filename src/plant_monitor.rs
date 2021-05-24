@@ -1,12 +1,3 @@
-#![no_std]
-#![macro_use]
-#![allow(incomplete_features)]
-#![feature(generic_associated_types)]
-#![feature(min_type_alias_impl_trait)]
-#![feature(impl_trait_in_bindings)]
-#![feature(type_alias_impl_trait)]
-#![feature(concat_idents)]
-
 use super::dht11::*;
 use super::network::*;
 use core::future::Future;
@@ -15,21 +6,15 @@ use core::pin::Pin;
 use drogue_device::{
     actors::button::{ButtonEvent, FromButtonEvent},
     nrf::{
-        buffered_uarte::BufferedUarte,
-        gpio::{FlexPin, Input, Level, NoPin, Output, OutputDrive, Pull},
-        gpiote::{self, PortInput},
-        interrupt,
-        peripherals::{P0_02, P0_03, P0_04, P0_09, P0_10, P0_14, TIMER0, UARTE0},
+        gpio::FlexPin,
+        peripherals::{P0_02, P0_04},
         saadc::*,
-        uarte, Peripherals,
     },
-    traits::{ip::*, tcp::*, wifi::*},
     *,
 };
 use serde::Serialize;
-use serde_cbor::ser::SliceWrite;
-use serde_cbor::Serializer;
 
+#[derive(Clone, Copy)]
 pub enum Command {
     TakeMeasurement,
 }
@@ -109,7 +94,7 @@ impl<'a> Actor for PlantMonitor<'a> {
     }
 
     fn on_message<'m>(
-        mut self: Pin<&'m mut Self>,
+        self: Pin<&'m mut Self>,
         message: Self::Message<'m>,
     ) -> Self::OnMessageFuture<'m> {
         async move {
