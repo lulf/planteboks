@@ -131,7 +131,7 @@ async fn main(context: DeviceContext<MyDevice>, p: Peripherals) {
         Timer::after(Duration::from_secs(1)).await;
         let sample = Pin::new(&mut adc).sample(&mut soil_pin).await;
         log::info!("Got soil sample: {}", sample);
-        match Dht11Reading::read(&mut temp_pin).await {
+        match Dht11Reading::read(&mut temp_pin) {
             Ok(Dht11Reading {
                 temperature,
                 relative_humidity,
