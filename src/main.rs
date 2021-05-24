@@ -9,9 +9,10 @@
 #![feature(concat_idents)]
 
 mod dht11;
-use dht11::*;
-mod app;
-use app::*;
+mod network;
+mod plant_monitor;
+use network::*;
+use plant_monitor::*;
 
 use log::LevelFilter;
 use panic_probe as _;
@@ -45,18 +46,11 @@ const PORT: u16 = 12345;
 
 static LOGGER: RTTLogger = RTTLogger::new(LevelFilter::Info);
 
-type UART = BufferedUarte<'static, UARTE0, TIMER0>;
-type ENABLE = Output<'static, P0_09>;
-type RESET = Output<'static, P0_10>;
-
 pub struct MyDevice {
-    driver: UnsafeCell<Esp8266Driver>,
-    modem: ActorContext<'static, Esp8266ModemActor<'static, UART, ENABLE, RESET>>,
-    app: ActorContext<'static, App<Esp8266Controller<'static>>>,
-    button: ActorContext<
-        'static,
-        Button<'static, PortInput<'static, P0_14>, App<Esp8266Controller<'static>>>,
-    >,
+    network: Network,
+    monitor: ActorContext<'static, PlantMonitor<'static>>,
+    button:
+        ActorContext<'static, Button<'static, PortInput<'static, P0_14>, PlantMonitor<'static>>>,
 }
 
 #[drogue::main]
@@ -102,31 +96,23 @@ async fn main(context: DeviceContext<MyDevice>, p: Peripherals) {
     let reset_pin = Output::new(p.P0_10, Level::Low, OutputDrive::Standard);
 
     let mut temp_pin = FlexPin::new(p.P0_02);
-    temp_pin.set_high().unwrap();
-
-    context.configure(MyDevice {
-        driver: UnsafeCell::new(Esp8266Driver::new()),
-        modem: ActorContext::new(Esp8266ModemActor::new()),
-        app: ActorContext::new(App::new(
-            WIFI_SSID.trim_end(),
-            WIFI_PSK.trim_end(),
-            HOST,
-            PORT,
-        )),
-        button: ActorContext::new(Button::new(button_port)),
-    });
-
-    context.mount(|device, spawner| {
-        let (controller, modem) =
-            unsafe { &mut *device.driver.get() }.initialize(u, enable_pin, reset_pin);
-        device.modem.mount(modem, spawner);
-        let app = device.app.mount(controller, spawner);
-        device.button.mount(app, spawner);
-    });
 
     let mut soil_pin = p.P0_04;
     let mut adc = OneShot::new(p.SAADC, interrupt::take!(SAADC), Default::default());
 
+    context.configure(MyDevice {
+        button: ActorContext::new(Button::new(button_port)),
+        network: Network::new(WIFI_SSID.trim_end(), WIFI_PSK.trim_end(), HOST, PORT),
+        monitor: ActorContext::new(PlantMonitor::new(temp_pin, soil_pin, adc)),
+    });
+
+    context.mount(|device, spawner| {
+        let network = device.network.mount((u, enable_pin, reset_pin), spawner);
+        let monitor = device.monitor.mount(network, spawner);
+        device.button.mount(monitor, spawner);
+    });
+
+    /*
     loop {
         Timer::after(Duration::from_secs(1)).await;
         let sample = Pin::new(&mut adc).sample(&mut soil_pin).await;
@@ -143,4 +129,5 @@ async fn main(context: DeviceContext<MyDevice>, p: Peripherals) {
             Err(e) => log::info!("Error getting temperature reading: {:?}", e),
         }
     }
+    */
 }
