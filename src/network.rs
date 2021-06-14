@@ -57,6 +57,7 @@ where
     fn on_start<'m>(mut self: Pin<&'m mut Self>) -> Self::OnStartFuture<'m> {
         async move {
             log::info!("Joining access point");
+            /*
             let adapter = self.adapter.take().unwrap();
             adapter
                 .join(Join::Wpa {
@@ -83,6 +84,7 @@ where
                     log::warn!("Error connecting: {:?}", e);
                 }
             }
+            */
         }
     }
 
@@ -91,6 +93,7 @@ where
         message: Self::Message<'m>,
     ) -> Self::OnMessageFuture<'m> {
         async move {
+            /*
             let socket = self.socket.take().expect("socket not bound!");
 
             let mut buf = [0; 256];
@@ -111,6 +114,7 @@ where
                 }
             }
             self.socket.replace(socket);
+            */
         }
     }
 }
