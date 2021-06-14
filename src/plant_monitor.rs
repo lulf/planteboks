@@ -4,13 +4,16 @@ use core::future::Future;
 
 use core::pin::Pin;
 use drogue_device::{
-    actors::button::{ButtonEvent, FromButtonEvent},
-    nrf::{
-        gpio::FlexPin,
-        peripherals::{P0_02, P0_04},
-        saadc::*,
+    actors::{
+        button::{ButtonEvent, FromButtonEvent},
+        wifi::Adapter,
     },
     *,
+};
+use embassy_nrf::{
+    gpio::FlexPin,
+    peripherals::{P0_02, P0_04},
+    saadc::*,
 };
 use serde::Serialize;
 
@@ -19,7 +22,10 @@ pub enum Command {
     TakeMeasurement,
 }
 
-impl<'a> FromButtonEvent<Command> for PlantMonitor<'a> {
+impl<'a, A> FromButtonEvent<Command> for PlantMonitor<'a, A>
+where
+    A: Adapter + 'a,
+{
     fn from(event: ButtonEvent) -> Option<Command> {
         match event {
             ButtonEvent::Pressed => None,
@@ -28,14 +34,20 @@ impl<'a> FromButtonEvent<Command> for PlantMonitor<'a> {
     }
 }
 
-pub struct PlantMonitor<'a> {
+pub struct PlantMonitor<'a, A>
+where
+    A: Adapter + 'static,
+{
     temperature: FlexPin<'a, P0_02>,
     soil: P0_04,
     adc: OneShot<'a>,
-    network: Option<Address<'static, NetworkApi<'static>>>,
+    network: Option<Address<'a, DrogueApi<'static, A>>>,
 }
 
-impl<'a> PlantMonitor<'a> {
+impl<'a, A> PlantMonitor<'a, A>
+where
+    A: Adapter + 'a,
+{
     pub fn new(temperature: FlexPin<'a, P0_02>, soil: P0_04, adc: OneShot<'a>) -> Self {
         Self {
             network: None,
@@ -76,8 +88,11 @@ impl<'a> PlantMonitor<'a> {
     }
 }
 
-impl<'a> Actor for PlantMonitor<'a> {
-    type Configuration = Address<'static, NetworkApi<'static>>;
+impl<'a, A> Actor for PlantMonitor<'a, A>
+where
+    A: Adapter + 'static,
+{
+    type Configuration = Address<'a, DrogueApi<'static, A>>;
     #[rustfmt::skip]
     type Message<'m> where 'a: 'm = Command;
     #[rustfmt::skip]
@@ -102,12 +117,7 @@ impl<'a> Actor for PlantMonitor<'a> {
             match message {
                 Command::TakeMeasurement => {
                     let measurement = this.take_measurement().await;
-                    this.network
-                        .as_ref()
-                        .unwrap()
-                        .request(measurement)
-                        .unwrap()
-                        .await;
+                    this.network.unwrap().request(measurement).unwrap().await;
                 }
             }
         }

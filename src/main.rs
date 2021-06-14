@@ -20,19 +20,25 @@ use rtt_logger::RTTLogger;
 use rtt_target::rtt_init_print;
 
 use drogue_device::{
-    actors::{button::Button, ticker::Ticker},
-    nrf::{
-        buffered_uarte::BufferedUarte,
-        gpio::{FlexPin, Input, Level, NoPin, Output, OutputDrive, Pull},
-        gpiote::PortInput,
-        interrupt,
-        peripherals::P0_14,
-        saadc::*,
-        uarte, Peripherals,
+    actors::{
+        button::Button,
+        ticker::Ticker,
+        wifi::{esp8266::*, *},
     },
-    time::*,
+    drivers::wifi::esp8266::*,
     traits::ip::*,
     *,
+};
+
+use embassy::time::*;
+use embassy_nrf::{
+    buffered_uarte::BufferedUarte,
+    gpio::{FlexPin, Input, Level, NoPin, Output, OutputDrive, Pull},
+    gpiote::PortInput,
+    interrupt,
+    peripherals::{P0_09, P0_10, P0_14, TIMER0, UARTE0},
+    saadc::*,
+    uarte, Peripherals,
 };
 
 const WIFI_SSID: &str = include_str!(concat!(env!("OUT_DIR"), "/config/wifi.ssid.txt"));
@@ -42,21 +48,28 @@ const PORT: u16 = 12345;
 
 static LOGGER: RTTLogger = RTTLogger::new(LevelFilter::Info);
 
+type UART = BufferedUarte<'static, UARTE0, TIMER0>;
+type ENABLE = Output<'static, P0_09>;
+type RESET = Output<'static, P0_10>;
+type WifiDriver = Esp8266Controller<'static>;
+
 pub struct MyDevice {
-    network: Network,
-    monitor: ActorContext<'static, PlantMonitor<'static>>,
-    ticker: ActorContext<'static, Ticker<'static, PlantMonitor<'static>>>,
-    button:
-        ActorContext<'static, Button<'static, PortInput<'static, P0_14>, PlantMonitor<'static>>>,
+    wifi: Esp8266Wifi<UART, ENABLE, RESET>,
+    network: ActorContext<'static, DrogueApi<'static, WifiDriver>>,
+    monitor: ActorContext<'static, PlantMonitor<'static, WifiDriver>>,
+    ticker: ActorContext<'static, Ticker<'static, PlantMonitor<'static, WifiDriver>>>,
+    button: ActorContext<
+        'static,
+        Button<'static, PortInput<'static, P0_14>, PlantMonitor<'static, WifiDriver>>,
+    >,
 }
 
-#[drogue::main]
-async fn main(context: DeviceContext<MyDevice>, p: Peripherals) {
-    rtt_init_print!();
-    unsafe {
-        log::set_logger_racy(&LOGGER).unwrap();
-    }
+static DEVICE: DeviceContext<MyDevice> = DeviceContext::new();
 
+#[embassy::main]
+async fn main(spawner: embassy::executor::Spawner, p: Peripherals) {
+    rtt_init_print!();
+    log::set_logger(&LOGGER).unwrap();
     log::set_max_level(log::LevelFilter::Info);
 
     let button_port = PortInput::new(Input::new(p.P0_14, Pull::Up));
@@ -93,18 +106,25 @@ async fn main(context: DeviceContext<MyDevice>, p: Peripherals) {
     let soil_pin = p.P0_04;
     let adc = OneShot::new(p.SAADC, interrupt::take!(SAADC), Default::default());
 
-    context.configure(MyDevice {
+    DEVICE.configure(MyDevice {
         ticker: ActorContext::new(Ticker::new(
             Duration::from_secs(300),
             Command::TakeMeasurement,
         )),
         button: ActorContext::new(Button::new(button_port)),
-        network: Network::new(WIFI_SSID.trim_end(), WIFI_PSK.trim_end(), HOST, PORT),
+        wifi: Esp8266Wifi::new(u, enable_pin, reset_pin),
+        network: ActorContext::new(DrogueApi::new(
+            WIFI_SSID.trim_end(),
+            WIFI_PSK.trim_end(),
+            HOST,
+            PORT,
+        )),
         monitor: ActorContext::new(PlantMonitor::new(temp_pin, soil_pin, adc)),
     });
 
-    context.mount(|device, spawner| {
-        let network = device.network.mount((u, enable_pin, reset_pin), spawner);
+    DEVICE.mount(|device| {
+        let wifi = WifiAdapter::new(device.wifi.mount((), spawner));
+        let network = device.network.mount(wifi, spawner);
         let monitor = device.monitor.mount(network, spawner);
         device.ticker.mount(monitor, spawner);
         device.button.mount(monitor, spawner);

@@ -1,4 +1,4 @@
-use drogue_device::nrf::gpio::{FlexPin, OutputDrive, Pin, Pull};
+use embassy_nrf::gpio::{FlexPin, OutputDrive, Pin, Pull};
 use embedded_hal::digital::v2::{InputPin, OutputPin};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
