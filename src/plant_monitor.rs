@@ -1,13 +1,9 @@
 use super::dht11::{self, Delay};
-use super::network::*;
 use core::future::Future;
 
 use core::pin::Pin;
 use drogue_device::{
-    actors::{
-        button::{ButtonEvent, FromButtonEvent},
-        wifi::Adapter,
-    },
+    actors::button::{ButtonEvent, FromButtonEvent},
     *,
 };
 use embassy_nrf::{
@@ -22,9 +18,10 @@ pub enum Command {
     TakeMeasurement,
 }
 
+#[rustfmt::skip]
 impl<'a, A, D> FromButtonEvent<Command> for PlantMonitor<'a, A, D>
 where
-    A: Adapter + 'a,
+    A: Actor<Message<'a> = Measurement> + 'static,
     D: Delay + 'a,
 {
     fn from(event: ButtonEvent) -> Option<Command> {
@@ -35,31 +32,38 @@ where
     }
 }
 
+#[rustfmt::skip]
 pub struct PlantMonitor<'a, A, D>
 where
-    A: Adapter + 'static,
+    A: Actor<Message<'a> = Measurement> + 'static,
     D: Delay + 'static,
 {
     delay: D,
     temperature: FlexPin<'a, P0_02>,
     soil: P0_04,
     adc: OneShot<'a>,
-    network: Option<Address<'a, DrogueApi<'static, A>>>,
+    sink: Option<Address<'a, A>>,
 }
 
+#[rustfmt::skip]
 impl<'a, A, D> PlantMonitor<'a, A, D>
 where
-    A: Adapter + 'a,
+    A: Actor<Message<'a> = Measurement> + 'static,
     D: Delay + 'a,
 {
     pub fn new(temperature: FlexPin<'a, P0_02>, soil: P0_04, adc: OneShot<'a>, delay: D) -> Self {
         Self {
-            network: None,
+            sink: None,
             delay,
             temperature,
             soil,
             adc,
         }
+    }
+
+    async fn report_measurement<'m>(&mut self, measurement: Measurement)
+    {
+        self.sink.unwrap().request(measurement).unwrap().await;
     }
 
     async fn take_measurement(&mut self) -> Measurement {
@@ -95,12 +99,13 @@ where
     }
 }
 
+#[rustfmt::skip]
 impl<'a, A, D> Actor for PlantMonitor<'a, A, D>
 where
-    A: Adapter + 'static,
+    A: Actor<Message<'a> = Measurement> + 'a,
     D: Delay + 'static,
 {
-    type Configuration = Address<'a, DrogueApi<'static, A>>;
+    type Configuration = Address<'a, A>;
     #[rustfmt::skip]
     type Message<'m> where 'a: 'm = Command;
     #[rustfmt::skip]
@@ -109,7 +114,7 @@ where
     type OnMessageFuture<'m> where 'a: 'm = impl Future<Output = ()> + 'm;
 
     fn on_mount(&mut self, config: Self::Configuration) {
-        self.network.replace(config);
+        self.sink.replace(config);
     }
 
     fn on_start<'m>(self: Pin<&'m mut Self>) -> Self::OnStartFuture<'m> {
@@ -125,14 +130,14 @@ where
             match message {
                 Command::TakeMeasurement => {
                     let measurement = this.take_measurement().await;
-                    this.network.unwrap().request(measurement).unwrap().await;
+                    this.report_measurement(measurement).await;
                 }
             }
         }
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone, Copy)]
 pub struct Measurement {
     soil: i16,
     temperature: i8,

@@ -1,46 +1,44 @@
 use crate::plant_monitor::Measurement;
-use core::future::Future;
+use core::{future::Future, marker::PhantomData};
 
 use core::pin::Pin;
-use drogue_device::{
-    actors::wifi::*,
-    traits::{ip::*, wifi::*},
-    *,
-};
+use drogue_device::{actors::wifi::*, traits::ip::*, *};
 
+use serde::Serialize;
 use serde_json_core::ser::to_slice;
 
-pub struct DrogueApi<'a, A>
+pub struct DrogueApi<'a, A, M>
 where
     A: Adapter + 'static,
+    M: From<Measurement> + Serialize + 'static,
 {
-    ssid: &'static str,
-    psk: &'static str,
     ip: IpAddress,
     port: u16,
     adapter: Option<WifiAdapter<'a, A>>,
     socket: Option<Socket<'a, A>>,
+    _conv: core::marker::PhantomData<M>,
 }
 
-impl<'a, A> DrogueApi<'a, A>
+impl<'a, A, M> DrogueApi<'a, A, M>
 where
     A: Adapter,
+    M: From<Measurement> + Serialize + 'static,
 {
-    pub fn new(ssid: &'static str, psk: &'static str, ip: IpAddress, port: u16) -> Self {
+    pub fn new(ip: IpAddress, port: u16) -> Self {
         Self {
-            ssid,
-            psk,
             ip,
             port,
             socket: None,
             adapter: None,
+            _conv: PhantomData,
         }
     }
 }
 
-impl<'a, A> Actor for DrogueApi<'a, A>
+impl<'a, A, M> Actor for DrogueApi<'a, A, M>
 where
     A: Adapter + 'static,
+    M: From<Measurement> + Serialize + 'static,
 {
     type Configuration = WifiAdapter<'a, A>;
     #[rustfmt::skip]
@@ -54,67 +52,59 @@ where
         self.adapter.replace(config);
     }
 
-    fn on_start<'m>(mut self: Pin<&'m mut Self>) -> Self::OnStartFuture<'m> {
+    fn on_start<'m>(self: Pin<&'m mut Self>) -> Self::OnStartFuture<'m> {
         async move {
-            log::info!("Joining access point");
-            /*
-            let adapter = self.adapter.take().unwrap();
-            adapter
-                .join(Join::Wpa {
-                    ssid: self.ssid,
-                    password: self.psk,
-                })
-                .await
-                .expect("Error joining wifi");
-            log::info!("Joined access point");
+            let this = unsafe { self.get_unchecked_mut() };
+            let adapter = this.adapter.take().unwrap();
 
             let socket = adapter.socket().await;
-            self.adapter.replace(adapter);
-
-            log::info!("Connecting to {}:{}", self.ip, self.port);
-            let result = socket
-                .connect(IpProtocol::Tcp, SocketAddress::new(self.ip, self.port))
-                .await;
-            match result {
-                Ok(_) => {
-                    self.socket.replace(socket);
-                    log::info!("Connected to {:?}!", self.ip);
-                }
-                Err(e) => {
-                    log::warn!("Error connecting: {:?}", e);
-                }
-            }
-            */
+            this.adapter.replace(adapter);
+            this.socket.replace(socket);
         }
     }
 
     fn on_message<'m>(
-        mut self: Pin<&'m mut Self>,
+        self: Pin<&'m mut Self>,
         message: Self::Message<'m>,
     ) -> Self::OnMessageFuture<'m> {
         async move {
-            /*
-            let socket = self.socket.take().expect("socket not bound!");
+            let this = unsafe { self.get_unchecked_mut() };
+            if let Some(socket) = this.socket.take() {
+                log::info!("Connecting to {}:{}", this.ip, this.port);
+                let result = socket
+                    .connect(IpProtocol::Tcp, SocketAddress::new(this.ip, this.port))
+                    .await;
+                match result {
+                    Ok(_) => {
+                        log::info!("Connected to {:?}!", this.ip);
+                        let data: M = message.into();
 
-            let mut buf = [0; 256];
-            match to_slice(&message, &mut buf) {
-                Ok(size) => {
-                    let result = socket.send(&buf[..size]).await;
-                    match result {
-                        Ok(_) => {
-                            log::debug!("Measurement reported");
-                        }
-                        Err(e) => {
-                            log::warn!("Error reporting measurement: {:?}", e);
+                        let mut buf = [0; 256];
+                        match to_slice(&data, &mut buf) {
+                            Ok(size) => {
+                                let result = socket.send(&buf[..size]).await;
+                                match result {
+                                    Ok(_) => {
+                                        log::debug!("Measurement reported");
+                                    }
+                                    Err(e) => {
+                                        log::warn!("Error reporting measurement: {:?}", e);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                log::warn!("Error serializing measurement: {:?}", e);
+                            }
                         }
                     }
+                    Err(e) => {
+                        log::warn!("Error connecting: {:?}", e);
+                    }
                 }
-                Err(e) => {
-                    log::warn!("Error serializing measurement: {:?}", e);
-                }
+                this.socket.replace(socket);
+            } else {
+                log::warn!("Socket not bound, skipping sending report");
             }
-            self.socket.replace(socket);
-            */
         }
     }
 }

@@ -19,11 +19,6 @@ impl Delay {
         Delay { syst }
     }
 
-    /// Releases the system timer (SysTick) resource.
-    pub fn free(self) -> SYST {
-        self.syst
-    }
-
     pub fn delay_internal(&mut self, us: u32) {
         // The SysTick Reload Value register supports values between 1 and 0x00FFFFFF.
         const MAX_RVR: u32 = 0x00FF_FFFF;

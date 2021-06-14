@@ -12,9 +12,11 @@ mod delay;
 mod dht11;
 mod network;
 mod plant_monitor;
+mod splitter;
 use delay::*;
 use network::*;
 use plant_monitor::*;
+use splitter::*;
 
 use log::LevelFilter;
 use panic_probe as _;
@@ -28,7 +30,7 @@ use drogue_device::{
         wifi::{esp8266::*, *},
     },
     drivers::wifi::esp8266::*,
-    traits::ip::*,
+    traits::{ip::*, wifi::Join},
     *,
 };
 
@@ -56,15 +58,18 @@ type ENABLE = Output<'static, P0_09>;
 type RESET = Output<'static, P0_10>;
 type WifiDriver = Esp8266Controller<'static>;
 
+type PublicApi = DrogueApi<'static, WifiDriver, Measurement>;
+type PrivateApi = DrogueApi<'static, WifiDriver, Measurement>;
+type Monitor = PlantMonitor<'static, Splitter<'static, Measurement, PublicApi, PrivateApi>, Delay>;
+
 pub struct MyDevice {
     wifi: Esp8266Wifi<UART, ENABLE, RESET>,
-    network: ActorContext<'static, DrogueApi<'static, WifiDriver>>,
-    monitor: ActorContext<'static, PlantMonitor<'static, WifiDriver, Delay>>,
-    ticker: ActorContext<'static, Ticker<'static, PlantMonitor<'static, WifiDriver, Delay>>>,
-    button: ActorContext<
-        'static,
-        Button<'static, PortInput<'static, P0_14>, PlantMonitor<'static, WifiDriver, Delay>>,
-    >,
+    public: ActorContext<'static, PublicApi>,
+    private: ActorContext<'static, PrivateApi>,
+    splitter: ActorContext<'static, Splitter<'static, Measurement, PublicApi, PrivateApi>>,
+    monitor: ActorContext<'static, Monitor>,
+    ticker: ActorContext<'static, Ticker<'static, Monitor>>,
+    button: ActorContext<'static, Button<'static, PortInput<'static, P0_14>, Monitor>>,
 }
 
 static DEVICE: DeviceContext<MyDevice> = DeviceContext::new();
@@ -118,12 +123,9 @@ async fn main(spawner: embassy::executor::Spawner, p: Peripherals) {
         )),
         button: ActorContext::new(Button::new(button_port)),
         wifi: Esp8266Wifi::new(u, enable_pin, reset_pin),
-        network: ActorContext::new(DrogueApi::new(
-            WIFI_SSID.trim_end(),
-            WIFI_PSK.trim_end(),
-            HOST,
-            PORT,
-        )),
+        public: ActorContext::new(DrogueApi::new(HOST, PORT)),
+        private: ActorContext::new(DrogueApi::new(HOST, PORT)),
+        splitter: ActorContext::new(Splitter::new()),
         monitor: ActorContext::new(PlantMonitor::new(
             temp_pin,
             soil_pin,
@@ -132,11 +134,23 @@ async fn main(spawner: embassy::executor::Spawner, p: Peripherals) {
         )),
     });
 
-    DEVICE.mount(|device| {
-        let wifi = WifiAdapter::new(device.wifi.mount((), spawner));
-        let network = device.network.mount(wifi, spawner);
-        let monitor = device.monitor.mount(network, spawner);
+    let wifi = DEVICE.mount(|device| {
+        let wifi = device.wifi.mount((), spawner);
+        let public = device.public.mount(WifiAdapter::new(wifi), spawner);
+        let private = device.private.mount(WifiAdapter::new(wifi), spawner);
+        let splitter = device.splitter.mount((public, private), spawner);
+        let monitor = device.monitor.mount(splitter, spawner);
         device.ticker.mount(monitor, spawner);
         device.button.mount(monitor, spawner);
+        WifiAdapter::new(wifi)
     });
+
+    let ssid = WIFI_SSID.trim_end();
+    let password = WIFI_PSK.trim_end();
+
+    log::info!("Joining access point");
+    wifi.join(Join::Wpa { ssid, password })
+        .await
+        .expect("Error joining wifi");
+    log::info!("Joined access point");
 }
