@@ -8,9 +8,7 @@ use drogue_device::{
     *,
 };
 
-use serde::Serialize;
-use serde_cbor::ser::SliceWrite;
-use serde_cbor::Serializer;
+use serde_json_core::ser::to_slice;
 
 pub struct DrogueApi<'a, A>
 where
@@ -96,12 +94,8 @@ where
             let socket = self.socket.take().expect("socket not bound!");
 
             let mut buf = [0; 256];
-            let writer = SliceWrite::new(&mut buf[..]);
-            let mut ser = Serializer::new(writer);
-            match message.serialize(&mut ser) {
-                Ok(_) => {
-                    let writer = ser.into_inner();
-                    let size = writer.bytes_written();
+            match to_slice(&message, &mut buf) {
+                Ok(size) => {
                     let result = socket.send(&buf[..size]).await;
                     match result {
                         Ok(_) => {

@@ -23,7 +23,7 @@ embassy = {git = "https://github.com/drogue-iot/embassy.git", branch = "master",
 embassy-nrf = {git = "https://github.com/drogue-iot/embassy.git", branch = "master", features = ["nrf52833"], default-features = false}
 
 serde = { version = "1.0", default-features = false, features = ["derive"] }
-serde_cbor = { version = "0.11", default-features = false }
+serde-json-core = { version = "0.4", default-features = false }
 
 [patch.crates-io]
 cortex-m = {git = "https://github.com/rust-embedded/cortex-m.git", branch = "master", features = ["device"]}
