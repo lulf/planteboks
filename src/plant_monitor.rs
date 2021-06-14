@@ -139,7 +139,7 @@ where
 
 #[derive(Serialize, Clone, Copy)]
 pub struct Measurement {
-    soil: i16,
-    temperature: i8,
-    humidity: u8,
+    pub soil: i16,
+    pub temperature: i8,
+    pub humidity: u8,
 }

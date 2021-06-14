@@ -46,10 +46,15 @@ use embassy_nrf::{
     uarte, Peripherals,
 };
 
+use serde::Serialize;
+
 const WIFI_SSID: &str = include_str!(concat!(env!("OUT_DIR"), "/config/wifi.ssid.txt"));
 const WIFI_PSK: &str = include_str!(concat!(env!("OUT_DIR"), "/config/wifi.password.txt"));
 const HOST: IpAddress = IpAddress::new_v4(192, 168, 1, 2);
 const PORT: u16 = 12345;
+// const GEOLOC: &str = include_str!(concat!(env!("OUT_DIR"), "/config/geolocation.txt"));
+const GEOLOC_LAT: f32 = 60.795974;
+const GEOLOC_LON: f32 = 11.076333;
 
 static LOGGER: RTTLogger = RTTLogger::new(LevelFilter::Info);
 
@@ -57,6 +62,32 @@ type UART = BufferedUarte<'static, UARTE0, TIMER0>;
 type ENABLE = Output<'static, P0_09>;
 type RESET = Output<'static, P0_10>;
 type WifiDriver = Esp8266Controller<'static>;
+
+#[derive(Serialize)]
+pub struct SandboxMeasurement {
+    temp: i8,
+    hum: u8,
+    geoloc: Geolocation,
+}
+
+#[derive(Serialize)]
+pub struct Geolocation {
+    lon: f32,
+    lat: f32,
+}
+
+impl From<Measurement> for SandboxMeasurement {
+    fn from(m: Measurement) -> SandboxMeasurement {
+        SandboxMeasurement {
+            temp: m.temperature,
+            hum: m.humidity,
+            geoloc: Geolocation {
+                lon: GEOLOC_LON,
+                lat: GEOLOC_LAT,
+            },
+        }
+    }
+}
 
 type PublicApi = DrogueApi<'static, WifiDriver, Measurement>;
 type PrivateApi = DrogueApi<'static, WifiDriver, Measurement>;
