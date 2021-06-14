@@ -8,9 +8,11 @@
 #![feature(type_alias_impl_trait)]
 #![feature(concat_idents)]
 
+mod delay;
 mod dht11;
 mod network;
 mod plant_monitor;
+use delay::*;
 use network::*;
 use plant_monitor::*;
 
@@ -30,7 +32,8 @@ use drogue_device::{
     *,
 };
 
-use embassy::time::*;
+use embassy::time::Duration;
+
 use embassy_nrf::{
     buffered_uarte::BufferedUarte,
     gpio::{FlexPin, Input, Level, NoPin, Output, OutputDrive, Pull},
@@ -56,11 +59,11 @@ type WifiDriver = Esp8266Controller<'static>;
 pub struct MyDevice {
     wifi: Esp8266Wifi<UART, ENABLE, RESET>,
     network: ActorContext<'static, DrogueApi<'static, WifiDriver>>,
-    monitor: ActorContext<'static, PlantMonitor<'static, WifiDriver>>,
-    ticker: ActorContext<'static, Ticker<'static, PlantMonitor<'static, WifiDriver>>>,
+    monitor: ActorContext<'static, PlantMonitor<'static, WifiDriver, Delay>>,
+    ticker: ActorContext<'static, Ticker<'static, PlantMonitor<'static, WifiDriver, Delay>>>,
     button: ActorContext<
         'static,
-        Button<'static, PortInput<'static, P0_14>, PlantMonitor<'static, WifiDriver>>,
+        Button<'static, PortInput<'static, P0_14>, PlantMonitor<'static, WifiDriver, Delay>>,
     >,
 }
 
@@ -106,6 +109,8 @@ async fn main(spawner: embassy::executor::Spawner, p: Peripherals) {
     let soil_pin = p.P0_04;
     let adc = OneShot::new(p.SAADC, interrupt::take!(SAADC), Default::default());
 
+    let cp = unsafe { cortex_m::Peripherals::steal() };
+
     DEVICE.configure(MyDevice {
         ticker: ActorContext::new(Ticker::new(
             Duration::from_secs(300),
@@ -119,7 +124,12 @@ async fn main(spawner: embassy::executor::Spawner, p: Peripherals) {
             HOST,
             PORT,
         )),
-        monitor: ActorContext::new(PlantMonitor::new(temp_pin, soil_pin, adc)),
+        monitor: ActorContext::new(PlantMonitor::new(
+            temp_pin,
+            soil_pin,
+            adc,
+            Delay::new(cp.SYST),
+        )),
     });
 
     DEVICE.mount(|device| {

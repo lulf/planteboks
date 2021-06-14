@@ -1,4 +1,4 @@
-use super::dht11::*;
+use super::dht11::{self, Delay};
 use super::network::*;
 use core::future::Future;
 
@@ -22,9 +22,10 @@ pub enum Command {
     TakeMeasurement,
 }
 
-impl<'a, A> FromButtonEvent<Command> for PlantMonitor<'a, A>
+impl<'a, A, D> FromButtonEvent<Command> for PlantMonitor<'a, A, D>
 where
     A: Adapter + 'a,
+    D: Delay + 'a,
 {
     fn from(event: ButtonEvent) -> Option<Command> {
         match event {
@@ -34,23 +35,27 @@ where
     }
 }
 
-pub struct PlantMonitor<'a, A>
+pub struct PlantMonitor<'a, A, D>
 where
     A: Adapter + 'static,
+    D: Delay + 'static,
 {
+    delay: D,
     temperature: FlexPin<'a, P0_02>,
     soil: P0_04,
     adc: OneShot<'a>,
     network: Option<Address<'a, DrogueApi<'static, A>>>,
 }
 
-impl<'a, A> PlantMonitor<'a, A>
+impl<'a, A, D> PlantMonitor<'a, A, D>
 where
     A: Adapter + 'a,
+    D: Delay + 'a,
 {
-    pub fn new(temperature: FlexPin<'a, P0_02>, soil: P0_04, adc: OneShot<'a>) -> Self {
+    pub fn new(temperature: FlexPin<'a, P0_02>, soil: P0_04, adc: OneShot<'a>, delay: D) -> Self {
         Self {
             network: None,
+            delay,
             temperature,
             soil,
             adc,
@@ -64,9 +69,11 @@ where
             soil: 0,
         };
 
+        let delay = &mut self.delay;
+
         log::info!("Take temperature measurement");
-        match Dht11Reading::read(&mut self.temperature) {
-            Ok(Dht11Reading {
+        match dht11::read(delay, &mut self.temperature) {
+            Ok(dht11::Reading {
                 temperature,
                 relative_humidity,
             }) => {
@@ -88,9 +95,10 @@ where
     }
 }
 
-impl<'a, A> Actor for PlantMonitor<'a, A>
+impl<'a, A, D> Actor for PlantMonitor<'a, A, D>
 where
     A: Adapter + 'static,
+    D: Delay + 'static,
 {
     type Configuration = Address<'a, DrogueApi<'static, A>>;
     #[rustfmt::skip]

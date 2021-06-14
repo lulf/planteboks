@@ -7,6 +7,11 @@ runner = "probe-run --chip nrf52833_xxAA"
 rustflags = [
   "-C", "link-arg=--nmagic",
   "-C", "link-arg=-Tlink.x",
+
+  # Code-size optimizations.
+  "-Z", "trap-unreachable=no",
+  "-C", "inline-threshold=5",
+  "-C", "no-vectorize-loops",
 ]
 
 [build]
