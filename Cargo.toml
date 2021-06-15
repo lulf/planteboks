@@ -18,8 +18,8 @@ cortex-m-rt = "0.6"
 dht-sensor = "0.2.1"
 embedded-hal = { version = "0.2.4", features = ["unproven"] }
 
-#drogue-device = { git = "https://github.com/drogue-iot/drogue-device.git", branch = "main", features = ["wifi+esp8266"], default-features = false }
-drogue-device = { path = "../drogue-iot/drogue-device/device", features = ["wifi+esp8266"], default-features = false }
+drogue-device = { git = "https://github.com/drogue-iot/drogue-device.git", branch = "main", features = ["wifi+esp8266"], default-features = false }
+#drogue-device = { path = "../drogue-iot/drogue-device/device", features = ["wifi+esp8266"], default-features = false }
 embassy = {git = "https://github.com/drogue-iot/embassy.git", branch = "master", default-features = false}
 embassy-nrf = {git = "https://github.com/drogue-iot/embassy.git", branch = "master", features = ["nrf52833"], default-features = false}
 

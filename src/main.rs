@@ -55,10 +55,14 @@ const HOST: IpAddress = IpAddress::new_v4(192, 168, 1, 2);
 const PORT: u16 = 5000;
 const PUBLIC_USERNAME: &str = include_str!(concat!(env!("OUT_DIR"), "/config/public.username.txt"));
 const PUBLIC_PASSWORD: &str = include_str!(concat!(env!("OUT_DIR"), "/config/public.password.txt"));
+const PRIVATE_USERNAME: &str =
+    include_str!(concat!(env!("OUT_DIR"), "/config/private.username.txt"));
+const PRIVATE_PASSWORD: &str =
+    include_str!(concat!(env!("OUT_DIR"), "/config/private.password.txt"));
 
-// const GEOLOC: &str = include_str!(concat!(env!("OUT_DIR"), "/config/geolocation.txt"));
-const GEOLOC_LAT: f32 = 60.795974;
-const GEOLOC_LON: f32 = 11.076333;
+const GEOLOC: &str = include_str!(concat!(env!("OUT_DIR"), "/config/geolocation.txt"));
+const GEOLOC_LAT_DEFAULT: f32 = 60.795974;
+const GEOLOC_LON_DEFAULT: f32 = 11.076333;
 
 static LOGGER: RTTLogger = RTTLogger::new(LevelFilter::Info);
 
@@ -67,41 +71,15 @@ type ENABLE = Output<'static, P0_09>;
 type RESET = Output<'static, P0_10>;
 type WifiDriver = Esp8266Controller<'static>;
 
-#[derive(Serialize)]
-pub struct SandboxMeasurement {
-    temp: i8,
-    hum: u8,
-    geoloc: Geolocation,
-}
-
-#[derive(Serialize)]
-pub struct Geolocation {
-    lon: f32,
-    lat: f32,
-}
-
-impl From<Measurement> for SandboxMeasurement {
-    fn from(m: Measurement) -> SandboxMeasurement {
-        SandboxMeasurement {
-            temp: m.temperature,
-            hum: m.humidity,
-            geoloc: Geolocation {
-                lon: GEOLOC_LON,
-                lat: GEOLOC_LAT,
-            },
-        }
-    }
-}
-
 type PublicApi = NetworkEndpoint<'static, WifiDriver, SandboxMeasurement>;
 type PrivateApi = NetworkEndpoint<'static, WifiDriver, Measurement>;
-type Monitor = PlantMonitor<'static, PublicApi, Delay>; //Splitter<'static, Measurement, PublicApi, PrivateApi>, Delay>;
+type Monitor = PlantMonitor<'static, Splitter<'static, Measurement, PublicApi, PrivateApi>, Delay>;
 
 pub struct MyDevice {
     wifi: Esp8266Wifi<UART, ENABLE, RESET>,
     public: ActorContext<'static, PublicApi>,
-    //private: ActorContext<'static, PrivateApi>,
-    //splitter: ActorContext<'static, Splitter<'static, Measurement, PublicApi, PrivateApi>>,
+    private: ActorContext<'static, PrivateApi>,
+    splitter: ActorContext<'static, Splitter<'static, Measurement, PublicApi, PrivateApi>>,
     monitor: ActorContext<'static, Monitor>,
     ticker: ActorContext<'static, Ticker<'static, Monitor>>,
     button: ActorContext<'static, Button<'static, PortInput<'static, P0_14>, Monitor>>,
@@ -164,14 +142,13 @@ async fn main(spawner: embassy::executor::Spawner, p: Peripherals) {
             PUBLIC_USERNAME.trim_end(),
             PUBLIC_PASSWORD.trim_end(),
         )),
-        /*
         private: ActorContext::new(NetworkEndpoint::new(
             HOST,
             PORT,
-            PUBLIC_USERNAME,
-            PUBLIC_PASSWORD,
+            PRIVATE_USERNAME.trim_end(),
+            PRIVATE_PASSWORD.trim_end(),
         )),
-        splitter: ActorContext::new(Splitter::new()),*/
+        splitter: ActorContext::new(Splitter::new()),
         monitor: ActorContext::new(PlantMonitor::new(
             temp_pin,
             soil_pin,
@@ -183,10 +160,9 @@ async fn main(spawner: embassy::executor::Spawner, p: Peripherals) {
     let wifi = DEVICE.mount(|device| {
         let wifi = device.wifi.mount((), spawner);
         let public = device.public.mount(WifiAdapter::new(wifi), spawner);
-        //let private = device.private.mount(WifiAdapter::new(wifi), spawner);
-        //let splitter = device.splitter.mount((public, private), spawner);
-        // let monitor = device.monitor.mount(splitter, spawner);
-        let monitor = device.monitor.mount(public, spawner);
+        let private = device.private.mount(WifiAdapter::new(wifi), spawner);
+        let splitter = device.splitter.mount((public, private), spawner);
+        let monitor = device.monitor.mount(splitter, spawner);
         device.ticker.mount(monitor, spawner);
         device.button.mount(monitor, spawner);
         WifiAdapter::new(wifi)
@@ -200,4 +176,51 @@ async fn main(spawner: embassy::executor::Spawner, p: Peripherals) {
         .await
         .expect("Error joining wifi");
     log::info!("Joined access point");
+}
+
+#[derive(Serialize)]
+pub struct SandboxMeasurement {
+    temp: i8,
+    hum: u8,
+    geoloc: Geolocation,
+}
+
+#[derive(Serialize)]
+pub struct Geolocation {
+    lon: f32,
+    lat: f32,
+}
+
+impl Geolocation {
+    pub fn parse(input: &str) -> Option<Self> {
+        let mut split = input.split(',');
+        let lat = split.next();
+        let lon = split.next();
+
+        match (lat, lon) {
+            (Some(lat), Some(lon)) => {
+                let latf: f32 = lat.parse().unwrap_or(GEOLOC_LAT_DEFAULT);
+                let lonf: f32 = lon.parse().unwrap_or(GEOLOC_LON_DEFAULT);
+                Some(Geolocation {
+                    lat: latf,
+                    lon: lonf,
+                })
+            }
+            _ => None,
+        }
+    }
+}
+
+impl From<Measurement> for SandboxMeasurement {
+    fn from(m: Measurement) -> SandboxMeasurement {
+        let geoloc = Geolocation::parse(GEOLOC).unwrap_or(Geolocation {
+            lon: GEOLOC_LON_DEFAULT,
+            lat: GEOLOC_LAT_DEFAULT,
+        });
+        SandboxMeasurement {
+            temp: m.temperature,
+            hum: m.humidity,
+            geoloc,
+        }
+    }
 }

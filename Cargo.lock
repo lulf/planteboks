@@ -189,6 +189,7 @@ dependencies = [
 [[package]]
 name = "drogue-device"
 version = "0.1.0"
+source = "git+https://github.com/drogue-iot/drogue-device.git?branch=main#4fc560fd0ed46cec544b80a2979c9625a03290d6"
 dependencies = [
  "atomic-polyfill",
  "critical-section",

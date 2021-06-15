@@ -38,6 +38,9 @@ fn main() {
     copy_config(&out, "config/wifi.password.txt");
     copy_config(&out, "config/public.username.txt");
     copy_config(&out, "config/public.password.txt");
+    copy_config(&out, "config/private.username.txt");
+    copy_config(&out, "config/private.password.txt");
+    copy_config(&out, "config/geolocation.txt");
 
     // By default, Cargo will re-run a build script whenever
     // any file in the project changes. By specifying `memory.x`
