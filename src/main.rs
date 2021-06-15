@@ -89,8 +89,8 @@ impl From<Measurement> for SandboxMeasurement {
     }
 }
 
-type PublicApi = DrogueApi<'static, WifiDriver, Measurement>;
-type PrivateApi = DrogueApi<'static, WifiDriver, Measurement>;
+type PublicApi = NetworkEndpoint<'static, WifiDriver, Measurement>;
+type PrivateApi = NetworkEndpoint<'static, WifiDriver, Measurement>;
 type Monitor = PlantMonitor<'static, Splitter<'static, Measurement, PublicApi, PrivateApi>, Delay>;
 
 pub struct MyDevice {
@@ -154,8 +154,8 @@ async fn main(spawner: embassy::executor::Spawner, p: Peripherals) {
         )),
         button: ActorContext::new(Button::new(button_port)),
         wifi: Esp8266Wifi::new(u, enable_pin, reset_pin),
-        public: ActorContext::new(DrogueApi::new(HOST, PORT)),
-        private: ActorContext::new(DrogueApi::new(HOST, PORT)),
+        public: ActorContext::new(NetworkEndpoint::new(HOST, PORT)),
+        private: ActorContext::new(NetworkEndpoint::new(HOST, PORT)),
         splitter: ActorContext::new(Splitter::new()),
         monitor: ActorContext::new(PlantMonitor::new(
             temp_pin,
