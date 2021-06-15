@@ -93,7 +93,7 @@ impl From<Measurement> for SandboxMeasurement {
     }
 }
 
-type PublicApi = NetworkEndpoint<'static, WifiDriver, Measurement>;
+type PublicApi = NetworkEndpoint<'static, WifiDriver, SandboxMeasurement>;
 type PrivateApi = NetworkEndpoint<'static, WifiDriver, Measurement>;
 type Monitor = PlantMonitor<'static, PublicApi, Delay>; //Splitter<'static, Measurement, PublicApi, PrivateApi>, Delay>;
 
@@ -161,8 +161,8 @@ async fn main(spawner: embassy::executor::Spawner, p: Peripherals) {
         public: ActorContext::new(NetworkEndpoint::new(
             HOST,
             PORT,
-            PUBLIC_USERNAME,
-            PUBLIC_PASSWORD,
+            PUBLIC_USERNAME.trim_end(),
+            PUBLIC_PASSWORD.trim_end(),
         )),
         /*
         private: ActorContext::new(NetworkEndpoint::new(

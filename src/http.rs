@@ -50,7 +50,7 @@ where
                 let mut authz = [0; 256];
                 let authz_len =
                     base64::encode_config_slice(combined.as_bytes(), base64::STANDARD, &mut authz);
-                let mut request: String<consts::U512> = String::new();
+                let mut request: String<consts::U1024> = String::new();
                 write!(request, "POST {} HTTP/1.1\r\n", path).unwrap();
                 write!(request, "Authorization: Basic {}\r\n", unsafe {
                     core::str::from_utf8_unchecked(&authz[..authz_len])

@@ -77,7 +77,12 @@ where
                             this.username,
                             this.password,
                         );
-                        let result = client.post("/v1/foo", &buf[..size]).await;
+                        let result = client
+                            .post(
+                                "/v1/foo?data_schema=urn:drogue:iot:temperature",
+                                &buf[..size],
+                            )
+                            .await;
                         match result {
                             Ok(_) => {
                                 log::debug!("Measurement reported");
