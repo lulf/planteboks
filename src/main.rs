@@ -10,6 +10,7 @@
 
 mod delay;
 mod dht11;
+mod http;
 mod network;
 mod plant_monitor;
 mod splitter;
@@ -51,7 +52,10 @@ use serde::Serialize;
 const WIFI_SSID: &str = include_str!(concat!(env!("OUT_DIR"), "/config/wifi.ssid.txt"));
 const WIFI_PSK: &str = include_str!(concat!(env!("OUT_DIR"), "/config/wifi.password.txt"));
 const HOST: IpAddress = IpAddress::new_v4(192, 168, 1, 2);
-const PORT: u16 = 12345;
+const PORT: u16 = 5000;
+const PUBLIC_USERNAME: &str = include_str!(concat!(env!("OUT_DIR"), "/config/public.username.txt"));
+const PUBLIC_PASSWORD: &str = include_str!(concat!(env!("OUT_DIR"), "/config/public.password.txt"));
+
 // const GEOLOC: &str = include_str!(concat!(env!("OUT_DIR"), "/config/geolocation.txt"));
 const GEOLOC_LAT: f32 = 60.795974;
 const GEOLOC_LON: f32 = 11.076333;
@@ -91,13 +95,13 @@ impl From<Measurement> for SandboxMeasurement {
 
 type PublicApi = NetworkEndpoint<'static, WifiDriver, Measurement>;
 type PrivateApi = NetworkEndpoint<'static, WifiDriver, Measurement>;
-type Monitor = PlantMonitor<'static, Splitter<'static, Measurement, PublicApi, PrivateApi>, Delay>;
+type Monitor = PlantMonitor<'static, PublicApi, Delay>; //Splitter<'static, Measurement, PublicApi, PrivateApi>, Delay>;
 
 pub struct MyDevice {
     wifi: Esp8266Wifi<UART, ENABLE, RESET>,
     public: ActorContext<'static, PublicApi>,
-    private: ActorContext<'static, PrivateApi>,
-    splitter: ActorContext<'static, Splitter<'static, Measurement, PublicApi, PrivateApi>>,
+    //private: ActorContext<'static, PrivateApi>,
+    //splitter: ActorContext<'static, Splitter<'static, Measurement, PublicApi, PrivateApi>>,
     monitor: ActorContext<'static, Monitor>,
     ticker: ActorContext<'static, Ticker<'static, Monitor>>,
     button: ActorContext<'static, Button<'static, PortInput<'static, P0_14>, Monitor>>,
@@ -154,9 +158,20 @@ async fn main(spawner: embassy::executor::Spawner, p: Peripherals) {
         )),
         button: ActorContext::new(Button::new(button_port)),
         wifi: Esp8266Wifi::new(u, enable_pin, reset_pin),
-        public: ActorContext::new(NetworkEndpoint::new(HOST, PORT)),
-        private: ActorContext::new(NetworkEndpoint::new(HOST, PORT)),
-        splitter: ActorContext::new(Splitter::new()),
+        public: ActorContext::new(NetworkEndpoint::new(
+            HOST,
+            PORT,
+            PUBLIC_USERNAME,
+            PUBLIC_PASSWORD,
+        )),
+        /*
+        private: ActorContext::new(NetworkEndpoint::new(
+            HOST,
+            PORT,
+            PUBLIC_USERNAME,
+            PUBLIC_PASSWORD,
+        )),
+        splitter: ActorContext::new(Splitter::new()),*/
         monitor: ActorContext::new(PlantMonitor::new(
             temp_pin,
             soil_pin,
@@ -168,9 +183,10 @@ async fn main(spawner: embassy::executor::Spawner, p: Peripherals) {
     let wifi = DEVICE.mount(|device| {
         let wifi = device.wifi.mount((), spawner);
         let public = device.public.mount(WifiAdapter::new(wifi), spawner);
-        let private = device.private.mount(WifiAdapter::new(wifi), spawner);
-        let splitter = device.splitter.mount((public, private), spawner);
-        let monitor = device.monitor.mount(splitter, spawner);
+        //let private = device.private.mount(WifiAdapter::new(wifi), spawner);
+        //let splitter = device.splitter.mount((public, private), spawner);
+        // let monitor = device.monitor.mount(splitter, spawner);
+        let monitor = device.monitor.mount(public, spawner);
         device.ticker.mount(monitor, spawner);
         device.button.mount(monitor, spawner);
         WifiAdapter::new(wifi)

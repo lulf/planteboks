@@ -1,4 +1,4 @@
-use crate::plant_monitor::Measurement;
+use crate::{http, plant_monitor::Measurement};
 use core::{future::Future, marker::PhantomData};
 
 use core::pin::Pin;
@@ -14,6 +14,8 @@ where
 {
     ip: IpAddress,
     port: u16,
+    username: &'static str,
+    password: &'static str,
     adapter: Option<WifiAdapter<'a, A>>,
     _conv: core::marker::PhantomData<M>,
 }
@@ -23,10 +25,12 @@ where
     A: Adapter,
     M: From<Measurement> + Serialize + 'static,
 {
-    pub fn new(ip: IpAddress, port: u16) -> Self {
+    pub fn new(ip: IpAddress, port: u16, username: &'static str, password: &'static str) -> Self {
         Self {
             ip,
             port,
+            username,
+            password,
             adapter: None,
             _conv: PhantomData,
         }
@@ -61,39 +65,32 @@ where
         async move {
             let this = unsafe { self.get_unchecked_mut() };
             if let Some(adapter) = this.adapter.take() {
-                let socket = adapter.socket().await;
-                log::info!("Connecting to {}:{}", this.ip, this.port);
-                let result = socket
-                    .connect(IpProtocol::Tcp, SocketAddress::new(this.ip, this.port))
-                    .await;
-                match result {
-                    Ok(_) => {
-                        log::info!("Connected to {:?}!", this.ip);
-                        let data: M = message.into();
-
-                        let mut buf = [0; 256];
-                        match to_slice(&data, &mut buf) {
-                            Ok(size) => {
-                                let result = socket.send(&buf[..size]).await;
-                                match result {
-                                    Ok(_) => {
-                                        log::debug!("Measurement reported");
-                                    }
-                                    Err(e) => {
-                                        log::warn!("Error reporting measurement: {:?}", e);
-                                    }
-                                }
+                let data: M = message.into();
+                let mut buf = [0; 256];
+                match to_slice(&data, &mut buf) {
+                    Ok(size) => {
+                        let socket = adapter.socket().await;
+                        let mut client = http::HttpClient::new(
+                            socket,
+                            this.ip,
+                            this.port,
+                            this.username,
+                            this.password,
+                        );
+                        let result = client.post("/v1/foo", &buf[..size]).await;
+                        match result {
+                            Ok(_) => {
+                                log::debug!("Measurement reported");
                             }
                             Err(e) => {
-                                log::warn!("Error serializing measurement: {:?}", e);
+                                log::warn!("Error reporting measurement: {:?}", e);
                             }
                         }
                     }
                     Err(e) => {
-                        log::warn!("Error connecting: {:?}", e);
+                        log::warn!("Error serializing measurement: {:?}", e);
                     }
                 }
-                socket.close().await;
                 this.adapter.replace(adapter);
             } else {
                 log::warn!("Adapter not bound, skipping sending report");
