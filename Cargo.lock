@@ -189,7 +189,7 @@ dependencies = [
 [[package]]
 name = "drogue-device"
 version = "0.1.0"
-source = "git+https://github.com/drogue-iot/drogue-device.git?branch=main#4fc560fd0ed46cec544b80a2979c9625a03290d6"
+source = "git+https://github.com/drogue-iot/drogue-device.git?branch=main#cb103d2bf44ddf745c27c4b48c37a2e9114c3cf3"
 dependencies = [
  "atomic-polyfill",
  "critical-section",
@@ -206,7 +206,7 @@ dependencies = [
 [[package]]
 name = "embassy"
 version = "0.1.0"
-source = "git+https://github.com/drogue-iot/embassy.git?branch=master#37fbc5fcc453a7a544703ff4dd69e7ebc38ed993"
+source = "git+https://github.com/drogue-iot/embassy.git?branch=master#0d1ae0a01e18e19cc8f33fd184785c19f18e1277"
 dependencies = [
  "atomic-polyfill",
  "cast",
@@ -221,7 +221,7 @@ dependencies = [
 [[package]]
 name = "embassy-extras"
 version = "0.1.0"
-source = "git+https://github.com/drogue-iot/embassy.git?branch=master#37fbc5fcc453a7a544703ff4dd69e7ebc38ed993"
+source = "git+https://github.com/drogue-iot/embassy.git?branch=master#0d1ae0a01e18e19cc8f33fd184785c19f18e1277"
 dependencies = [
  "cortex-m 0.7.2",
  "embassy",
@@ -231,7 +231,7 @@ dependencies = [
 [[package]]
 name = "embassy-macros"
 version = "0.1.0"
-source = "git+https://github.com/drogue-iot/embassy.git?branch=master#37fbc5fcc453a7a544703ff4dd69e7ebc38ed993"
+source = "git+https://github.com/drogue-iot/embassy.git?branch=master#0d1ae0a01e18e19cc8f33fd184785c19f18e1277"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -242,7 +242,7 @@ dependencies = [
 [[package]]
 name = "embassy-nrf"
 version = "0.1.0"
-source = "git+https://github.com/drogue-iot/embassy.git?branch=master#37fbc5fcc453a7a544703ff4dd69e7ebc38ed993"
+source = "git+https://github.com/drogue-iot/embassy.git?branch=master#0d1ae0a01e18e19cc8f33fd184785c19f18e1277"
 dependencies = [
  "cortex-m 0.7.2",
  "cortex-m-rt",
@@ -259,7 +259,7 @@ dependencies = [
 [[package]]
 name = "embassy-traits"
 version = "0.1.0"
-source = "git+https://github.com/drogue-iot/embassy.git?branch=master#37fbc5fcc453a7a544703ff4dd69e7ebc38ed993"
+source = "git+https://github.com/drogue-iot/embassy.git?branch=master#0d1ae0a01e18e19cc8f33fd184785c19f18e1277"
 dependencies = [
  "embedded-hal",
 ]
@@ -465,14 +465,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "panic-probe"
-version = "0.2.0"
+name = "panic-reset"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "45b5c81d6b51f415b3ba40b30dc598dfffb29ad4cf4a8815989754850ce6c0dc"
+checksum = "acee8535a38487c5c70d61ee87284710452cb3b265304463f20a0c5327a4a8a5"
 dependencies = [
  "cortex-m 0.6.7",
- "cortex-m-rt",
- "rtt-target",
 ]
 
 [[package]]
@@ -521,9 +519,7 @@ dependencies = [
  "embedded-hal",
  "heapless",
  "log",
- "panic-probe",
- "rtt-logger",
- "rtt-target",
+ "panic-reset",
  "serde",
  "serde-json-core",
 ]
@@ -551,26 +547,6 @@ name = "r0"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2a38df5b15c8d5c7e8654189744d8e396bddc18ad48041a500ce52d6948941f"
-
-[[package]]
-name = "rtt-logger"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d082d3a20a5d4f69ad509720de1777fe5aa2092ea1af51b254ff79113d46d2ea"
-dependencies = [
- "log",
- "rtt-target",
-]
-
-[[package]]
-name = "rtt-target"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0869b4c5b6a6d8c5583fc473f9eb3423a170f77626b8c8a7fb18eddcda5770e2"
-dependencies = [
- "cortex-m 0.6.7",
- "ufmt-write",
-]
 
 [[package]]
 name = "rustc_version"
@@ -660,12 +636,6 @@ name = "typenum"
 version = "1.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "879f6906492a7cd215bfa4cf595b600146ccfac0c79bcbd1f3000162af5e8b06"
-
-[[package]]
-name = "ufmt-write"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e87a2ed6b42ec5e28cc3b94c09982969e9227600b2e3dcbc1db927a84c06bd69"
 
 [[package]]
 name = "unicode-xid"

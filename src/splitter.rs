@@ -46,7 +46,7 @@ where
 
     type OnMessageFuture<'m> where 'a: 'm, A: 'm, B: 'm, M: 'm  = impl Future<Output = ()> + 'm;
 
-    fn on_mount(&mut self, config: Self::Configuration) {
+    fn on_mount(&mut self, _: Address<'static, Self>, config: Self::Configuration) {
         self.a.replace(config.0);
         self.b.replace(config.1);
     }
