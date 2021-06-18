@@ -68,8 +68,8 @@ where
 
     async fn take_measurement(&mut self) -> Measurement {
         let mut measurement = Measurement {
-            temperature: 0,
-            humidity: 0,
+            temperature: 0.0,
+            humidity: 0.0,
             soil: 0,
         };
 
@@ -140,6 +140,6 @@ where
 #[derive(Serialize, Clone, Copy)]
 pub struct Measurement {
     pub soil: i16,
-    pub temperature: i8,
-    pub humidity: u8,
+    pub temperature: f32,
+    pub humidity: f32,
 }

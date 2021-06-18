@@ -4,25 +4,26 @@ use embedded_hal::{
     digital::v2::{InputPin, OutputPin},
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy)]
 pub struct Reading {
-    pub temperature: i8,
-    pub relative_humidity: u8,
+    pub temperature: f32,
+    pub relative_humidity: f32,
 }
 
 pub trait Delay: DelayUs<u32> + DelayMs<u32> {}
 impl<T> Delay for T where T: DelayMs<u32> + DelayUs<u32> {}
 
 fn raw_to_reading(bytes: [u8; 4]) -> Reading {
-    let [rh, _, temp_signed, _] = bytes;
-    let temp = {
-        let (signed, magnitude) = convert_signed(temp_signed);
-        let temp_sign = if signed { -1 } else { 1 };
-        temp_sign * magnitude as i8
-    };
+    let mut temp = i16::from(bytes[2] & 0x7f) * 10 + i16::from(bytes[3]);
+    if bytes[2] & 0x80 != 0 {
+        temp = -temp;
+    }
+
+    let hum = u16::from(bytes[0]) * 10 + u16::from(bytes[1]);
+
     Reading {
-        temperature: temp,
-        relative_humidity: rh,
+        temperature: (temp as f32) / 10.0,
+        relative_humidity: (hum as f32) / 10.0,
     }
 }
 
@@ -110,21 +111,3 @@ where
     }
     Err(DhtError::Timeout)
 }
-
-fn convert_signed(signed: u8) -> (bool, u8) {
-    let sign = signed & 0x80 != 0;
-    let magnitude = signed & 0x7F;
-    (sign, magnitude)
-}
-
-/*
-#[inline]
-fn delay_ms(us: u32) {
-    cortex_m::asm::delay(us * 64 * 1000);
-}
-
-#[inline]
-fn delay_us(us: u32) {
-    cortex_m::asm::delay(us * 64);
-}
-*/

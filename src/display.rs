@@ -98,14 +98,14 @@ impl Actor for DisplayActor {
                 .unwrap()
                 .await;
 
-            let mut temp: u8 = if message.temperature.is_negative() {
+            let mut temp: u8 = if message.temperature.is_sign_negative() {
                 self.matrix
                     .unwrap()
                     .request(MatrixCommand::ApplyFrame(&'-'))
                     .unwrap()
                     .await;
                 Timer::after(Duration::from_secs(1)).await;
-                message.temperature.abs() as u8
+                (message.temperature * -1.0) as u8
             } else {
                 message.temperature as u8
             };
