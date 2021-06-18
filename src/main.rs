@@ -21,8 +21,8 @@ use network::*;
 use plant_monitor::*;
 use splitter::*;
 
-use log::LevelFilter;
 use panic_reset as _;
+//use log::LevelFilter;
 //use panic_probe as _;
 //use rtt_logger::RTTLogger;
 //use rtt_target::rtt_init_print;
