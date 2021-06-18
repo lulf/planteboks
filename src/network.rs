@@ -78,10 +78,7 @@ where
                             this.password,
                         );
                         let result = client
-                            .post(
-                                "/v1/foo?data_schema=urn:drogue:iot:temperature",
-                                &buf[..size],
-                            )
+                            .post("/v1/foo?data_schema=urn:no:lulf:plantmonitor", &buf[..size])
                             .await;
                         match result {
                             Ok(_) => {
