@@ -145,7 +145,7 @@ async fn main(spawner: embassy::executor::Spawner, p: Peripherals) {
 
     DEVICE.configure(MyDevice {
         ticker: ActorContext::new(Ticker::new(
-            Duration::from_secs(300),
+            Duration::from_secs(600),
             Command::TakeMeasurement,
         )),
         button: ActorContext::new(Button::new(button_port)),
