@@ -11,14 +11,15 @@
 mod delay;
 mod dht11;
 mod display;
-mod http;
 mod network;
 mod plant_monitor;
+mod rng;
 mod splitter;
 use delay::*;
 use display::*;
 use network::*;
 use plant_monitor::*;
+use rng::*;
 use splitter::*;
 
 use panic_reset as _;
@@ -28,15 +29,12 @@ use panic_reset as _;
 //use rtt_target::rtt_init_print;
 
 use drogue_device::{
-    actors::{
-        button::Button,
-        ticker::Ticker,
-        wifi::{esp8266::*, *},
-    },
+    actors::{button::Button, socket::*, ticker::Ticker, wifi::esp8266::*},
     drivers::wifi::esp8266::*,
-    traits::{ip::*, wifi::Join},
+    traits::{ip::*, tcp::*, wifi::*},
     *,
 };
+use drogue_tls::*;
 
 use embassy::time::Duration;
 
@@ -49,11 +47,15 @@ use embassy_nrf::{
     saadc::*,
     uarte, Peripherals,
 };
+use nrf52833_pac as pac;
 
 const WIFI_SSID: &str = include_str!(concat!(env!("OUT_DIR"), "/config/wifi.ssid.txt"));
 const WIFI_PSK: &str = include_str!(concat!(env!("OUT_DIR"), "/config/wifi.password.txt"));
-const HOST: IpAddress = IpAddress::new_v4(192, 168, 1, 2);
+
+const HOST: &str = "http.sandbox.drogue.cloud";
+const IP: IpAddress = IpAddress::new_v4(95, 216, 224, 167); // IP resolved for "http.sandbox.drogue.cloud"
 const PORT: u16 = 5000;
+
 const USERNAME: &str = include_str!(concat!(env!("OUT_DIR"), "/config/username.txt"));
 const PASSWORD: &str = include_str!(concat!(env!("OUT_DIR"), "/config/password.txt"));
 
@@ -62,9 +64,10 @@ const PASSWORD: &str = include_str!(concat!(env!("OUT_DIR"), "/config/password.t
 type UART = BufferedUarte<'static, UARTE0, TIMER0>;
 type ENABLE = Output<'static, P0_09>;
 type RESET = Output<'static, P0_10>;
-type WifiDriver = Esp8266Controller<'static>;
+type AppSocket =
+    TlsSocket<'static, Socket<'static, Esp8266Controller<'static>>, Rng, Aes128GcmSha256>;
 
-type Network = NetworkEndpoint<'static, WifiDriver, Measurement>;
+type Network = NetworkEndpoint<AppSocket, Measurement>;
 type Sink = Splitter<'static, Measurement, Network, <Display as Package>::Primary>;
 type Monitor = PlantMonitor<'static, Sink, Delay>;
 
@@ -78,6 +81,7 @@ pub struct MyDevice {
     button: ActorContext<'static, Button<'static, PortInput<'static, P0_14>, Monitor>>,
 }
 
+static mut TLS_BUFFER: [u8; 16384] = [0; 16384];
 static DEVICE: DeviceContext<MyDevice> = DeviceContext::new();
 
 fn output_pin(pin: AnyPin) -> Output<'static, AnyPin> {
@@ -96,8 +100,8 @@ async fn main(spawner: embassy::executor::Spawner, p: Peripherals) {
     config.parity = uarte::Parity::EXCLUDED;
     config.baudrate = uarte::Baudrate::BAUD115200;
 
-    static mut TX_BUFFER: [u8; 256] = [0u8; 256];
-    static mut RX_BUFFER: [u8; 256] = [0u8; 256];
+    static mut TX_BUFFER: [u8; 8192] = [0u8; 8192];
+    static mut RX_BUFFER: [u8; 8192] = [0u8; 8192];
 
     let irq = interrupt::take!(UARTE0_UART0);
     let u = unsafe {
@@ -151,7 +155,7 @@ async fn main(spawner: embassy::executor::Spawner, p: Peripherals) {
         button: ActorContext::new(Button::new(button_port)),
         wifi: Esp8266Wifi::new(u, enable_pin, reset_pin),
         network: ActorContext::new(NetworkEndpoint::new(
-            HOST,
+            IP,
             PORT,
             USERNAME.trim_end(),
             PASSWORD.trim_end(),
@@ -166,24 +170,31 @@ async fn main(spawner: embassy::executor::Spawner, p: Peripherals) {
         display: Display::new(rows, cols),
     });
 
-    let wifi = DEVICE.mount(|device| {
-        let display = device.display.mount((), spawner);
-        let wifi = device.wifi.mount((), spawner);
-        let network = device.network.mount(WifiAdapter::new(wifi), spawner);
-        let sink = device.sink.mount((network, display), spawner);
-        let monitor = device.monitor.mount(sink, spawner);
-        device.ticker.mount(monitor, spawner);
-        device.button.mount(monitor, spawner);
+    DEVICE
+        .mount(|device| async move {
+            let display = device.display.mount((), spawner);
+            let mut wifi = device.wifi.mount((), spawner);
+            wifi.join(Join::Wpa {
+                ssid: WIFI_SSID.trim_end(),
+                password: WIFI_PSK.trim_end(),
+            })
+            .await
+            .expect("Error joining wifi");
+            log::info!("Joined access point");
 
-        WifiAdapter::new(wifi)
-    });
-
-    let ssid = WIFI_SSID.trim_end();
-    let password = WIFI_PSK.trim_end();
-
-    log::info!("Joining access point");
-    wifi.join(Join::Wpa { ssid, password })
-        .await
-        .expect("Error joining wifi");
-    log::info!("Joined access point");
+            let socket = Socket::new(wifi, wifi.open().await);
+            let socket = TlsSocket::wrap(
+                socket,
+                TlsContext::new(Rng::new(pac::Peripherals::take().unwrap().RNG), unsafe {
+                    &mut TLS_BUFFER
+                })
+                .with_server_name(HOST.trim_end()),
+            );
+            let network = device.network.mount(socket, spawner);
+            let sink = device.sink.mount((network, display), spawner);
+            let monitor = device.monitor.mount(sink, spawner);
+            device.ticker.mount(monitor, spawner);
+            device.button.mount(monitor, spawner);
+        })
+        .await;
 }

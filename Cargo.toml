@@ -12,6 +12,7 @@ panic-reset = "0.1.0"
 log = "0.4"
 #rtt-logger = "0.1"
 #rtt-target = { version = "0.2.0", features = ["cortex-m"] }
+rand_core = { version = "0.6.2", default-features = false }
 
 cortex-m = { version = "0.6", features = ["inline-asm"] }
 cortex-m-rt = "0.6"
@@ -19,10 +20,12 @@ cortex-m-rt = "0.6"
 dht-sensor = "0.2.1"
 embedded-hal = { version = "0.2.4", features = ["unproven"] }
 
-drogue-device = { git = "https://github.com/drogue-iot/drogue-device.git", branch = "main", features = ["wifi+esp8266", "fonts"], default-features = false }
-#drogue-device = { path = "../drogue-iot/drogue-device/device", features = ["wifi+esp8266", "fonts"], default-features = false }
+# drogue-device = { git = "https://github.com/drogue-iot/drogue-device.git", branch = "main", features = ["wifi+esp8266", "fonts", "tls"], default-features = false }
+drogue-device = { path = "../drogue-iot/drogue-device/device", features = ["wifi+esp8266", "fonts", "tls"], default-features = false }
+drogue-tls = {git = "https://github.com/drogue-iot/drogue-tls.git", branch = "main", default-features = false}
 embassy = {git = "https://github.com/drogue-iot/embassy.git", branch = "master", default-features = false}
 embassy-nrf = {git = "https://github.com/drogue-iot/embassy.git", branch = "master", features = ["nrf52833"], default-features = false}
+nrf52833-pac = { version = "0.9", features = ["rt"] }
 
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde-json-core = { version = "0.4", default-features = false }

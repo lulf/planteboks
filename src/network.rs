@@ -1,28 +1,32 @@
-use crate::{http, plant_monitor::Measurement};
+use crate::plant_monitor::Measurement;
 use core::{future::Future, marker::PhantomData};
 
 use core::pin::Pin;
-use drogue_device::{actors::wifi::*, traits::ip::*, *};
+use drogue_device::{
+    clients::http::*,
+    traits::{ip::*, tcp::*},
+    *,
+};
 
 use serde::Serialize;
 use serde_json_core::ser::to_slice;
 
-pub struct NetworkEndpoint<'a, A, M>
+pub struct NetworkEndpoint<A, M>
 where
-    A: Adapter + 'static,
+    A: TcpSocket + 'static,
     M: From<Measurement> + Serialize + 'static,
 {
     ip: IpAddress,
     port: u16,
     username: &'static str,
     password: &'static str,
-    adapter: Option<WifiAdapter<'a, A>>,
+    socket: Option<A>,
     _conv: core::marker::PhantomData<M>,
 }
 
-impl<'a, A, M> NetworkEndpoint<'a, A, M>
+impl<A, M> NetworkEndpoint<A, M>
 where
-    A: Adapter,
+    A: TcpSocket + 'static,
     M: From<Measurement> + Serialize + 'static,
 {
     pub fn new(ip: IpAddress, port: u16, username: &'static str, password: &'static str) -> Self {
@@ -31,27 +35,25 @@ where
             port,
             username,
             password,
-            adapter: None,
+            socket: None,
             _conv: PhantomData,
         }
     }
 }
 
-impl<'a, A, M> Actor for NetworkEndpoint<'a, A, M>
+impl<A, M> Actor for NetworkEndpoint<A, M>
 where
-    A: Adapter + 'static,
+    A: TcpSocket + 'static,
     M: From<Measurement> + Serialize + 'static,
 {
-    type Configuration = WifiAdapter<'a, A>;
-    #[rustfmt::skip]
-    type Message<'m> where 'a: 'm = Measurement;
-    #[rustfmt::skip]
-    type OnStartFuture<'m> where 'a: 'm = impl Future<Output = ()> + 'm;
-    #[rustfmt::skip]
-    type OnMessageFuture<'m> where 'a: 'm = impl Future<Output = ()> + 'm;
+    type Configuration = A;
+
+    type Message<'m> = Measurement;
+    type OnStartFuture<'m> = impl Future<Output = ()> + 'm;
+    type OnMessageFuture<'m> = impl Future<Output = ()> + 'm;
 
     fn on_mount(&mut self, _: Address<'static, Self>, config: Self::Configuration) {
-        self.adapter.replace(config);
+        self.socket.replace(config);
     }
 
     fn on_start<'m>(self: Pin<&'m mut Self>) -> Self::OnStartFuture<'m> {
@@ -64,21 +66,26 @@ where
     ) -> Self::OnMessageFuture<'m> {
         async move {
             let this = unsafe { self.get_unchecked_mut() };
-            if let Some(adapter) = this.adapter.take() {
+            if let Some(mut socket) = this.socket.take() {
                 let data: M = message.into();
                 let mut buf = [0; 256];
                 match to_slice(&data, &mut buf) {
                     Ok(size) => {
-                        let socket = adapter.socket().await;
-                        let mut client = http::HttpClient::new(
-                            socket,
+                        let mut client = HttpClient::new(
+                            &mut socket,
                             this.ip,
                             this.port,
                             this.username,
                             this.password,
                         );
+                        let mut rx_buf = [0; 32];
                         let result = client
-                            .post("/v1/foo?data_schema=urn:no:lulf:plantmonitor", &buf[..size])
+                            .post(
+                                "/v1/foo?data_schema=urn:no:lulf:plantmonitor",
+                                &buf[..size],
+                                "application/json",
+                                &mut rx_buf[..],
+                            )
                             .await;
                         match result {
                             Ok(_) => {
@@ -93,9 +100,9 @@ where
                         log::warn!("Error serializing measurement: {:?}", e);
                     }
                 }
-                this.adapter.replace(adapter);
+                this.socket.replace(socket);
             } else {
-                log::warn!("Adapter not bound, skipping sending report");
+                log::warn!("Socket not bound, skipping sending report");
             }
         }
     }
